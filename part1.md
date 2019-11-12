@@ -447,7 +447,7 @@ After that we can see our GPS points on the map and colored based on their event
 Now we have setup our Pub/Sub topic and BigQuery as our Data Warehouse.
 In the next Codelab we start to ingest some data from our devices.
 
-You are now ready to head over to [Part 2](/part2)
+You are now ready to head over to Part 2.
 
 Negative
 : You don't need to do any project cleanup at this point if you are continuing to the next lab.
