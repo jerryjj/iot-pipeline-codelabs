@@ -4,7 +4,7 @@ id: part1
 categories: sdk
 environments: js
 status: draft
-feedback link: https://github.com/jerryjj/iot-pipeline-codelabs
+feedback link: https://github.com/jerryjj/iot-pipeline-codelabs/issues
 <!-- analytics account: 0 -->
 
 # IoT Data Pipelines in GCP - Part 1
