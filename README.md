@@ -22,5 +22,5 @@ Open another terminal and run
 claat serve
 ```
 
-This will open your browser to http://localhost:9090/
+This will open your browser to <http://localhost:9090/>
 To be able to navigate to different parts append eg `/part1` to the url.
