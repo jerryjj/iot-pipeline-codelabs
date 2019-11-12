@@ -90,9 +90,11 @@ You may of course use your existing GCP Project if you want to, just use the **P
 
 ### Open Cloud Shell to your project
 
-We will be utilising Cloud Shell during this codelab so you don't need to install any command-line tools to your working computer.
+We will be utilising [Cloud Shell](https://cloud.google.com/shell/) during this codelab so you don't need to install any command-line tools to your working computer.
 
 [Open in Cloud Shell and clone lab repository](https://ssh.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/jerryjj/iot-pipelines-series)
+
+Reason we use the Cloud Shell is that it comes pre-installed with the tools we need!
 
 ### Prepare common environment variables
 
@@ -117,6 +119,9 @@ gcloud services enable --project=$GCP_PROJECT_ID "pubsub.googleapis.com"
 
 You should see a response similar to this:
 `Operation "operations/acf.5862d95f-31fc-4d97-844c-6dd1fd855d27" finished successfully.`
+
+Negative
+: Note: `gcloud` is the powerful and unified command-line tool for Google Cloud Platform. Full documentation is available from <https://cloud.google.com/sdk/gcloud>. It comes pre-installed on Cloud Shell.
 
 ### Create Pub/Sub topic
 

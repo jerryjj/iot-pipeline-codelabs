@@ -87,8 +87,9 @@
 </ul>
 <p>You may of course use your existing GCP Project if you want to, just use the <strong>Project ID</strong> of that one in the next step.</p>
 <h2 is-upgraded>Open Cloud Shell to your project</h2>
-<p>We will be utilising Cloud Shell during this codelab so you don&#39;t need to install any command-line tools to your working computer.</p>
+<p>We will be utilising <a href="https://cloud.google.com/shell/" target="_blank">Cloud Shell</a> during this codelab so you don&#39;t need to install any command-line tools to your working computer.</p>
 <p><a href="https://ssh.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/jerryjj/iot-pipelines-series" target="_blank">Open in Cloud Shell and clone lab repository</a></p>
+<p>Reason we use the Cloud Shell is that it comes pre-installed with the tools we need!</p>
 <h2 is-upgraded>Prepare common environment variables</h2>
 <p>Now before heading to the next part, set these environment variables to your terminal,<br>to choose a suitable region next to you, you can consult the <a href="https://cloud.google.com/compute/docs/regions-zones/#locations" target="_blank">Locations information</a><br>from Google Cloud documentation.</p>
 <pre><code>export GCP_PROJECT_ID=[use-your-project-id-here]
@@ -103,6 +104,8 @@ export GCP_REGION=europe-west1 # Select a region suitable to you
 <pre><code>gcloud services enable --project=$GCP_PROJECT_ID &#34;pubsub.googleapis.com&#34;
 </code></pre>
 <p>You should see a response similar to this:<br><code>Operation &#34;operations/acf.5862d95f-31fc-4d97-844c-6dd1fd855d27&#34; finished successfully.</code></p>
+<aside class="warning"><p>Note: <code>gcloud</code> is the powerful and unified command-line tool for Google Cloud Platform. Full documentation is available from <a href="https://cloud.google.com/sdk/gcloud" target="_blank">https://cloud.google.com/sdk/gcloud</a>. It comes pre-installed on Cloud Shell.</p>
+</aside>
 <h2 is-upgraded>Create Pub/Sub topic</h2>
 <p>Now we can start utilising the product, so first thing we want to do is create a Topic.</p>
 <aside class="special"><p>Remember, everything we do from the command-line can also be achieved from the Google Cloud Console UI.</p>
