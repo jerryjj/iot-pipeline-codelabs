@@ -450,5 +450,5 @@ In the next Codelab we start to ingest some data from our devices.
 You are now ready to head over to [Part 2](/part2)
 
 Negative
-:You don't need to do any project cleanup at this point if you are continuing to the next lab.
-Otherwise you may just delete the project from the Cloud Console and it will delete all the resources we have do so far.
+: You don't need to do any project cleanup at this point if you are continuing to the next lab.
+Otherwise you may just delete the project from the Cloud Console and it will delete all the resources we have done so far.
