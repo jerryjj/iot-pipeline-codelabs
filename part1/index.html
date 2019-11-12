@@ -1,0 +1,364 @@
+
+<!doctype html>
+
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1.0, user-scalable=yes">
+  <meta name="theme-color" content="#4F7DC9">
+  <meta charset="UTF-8">
+  <title>IoT Data Pipelines in GCP - Part 1</title>
+  <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Source+Code+Pro:400|Roboto:400,300,400italic,500,700|Roboto+Mono">
+  <link rel="stylesheet" href="//fonts.googleapis.com/icon?family=Material+Icons">
+  <link rel="stylesheet" href="https://storage.googleapis.com/codelab-elements/codelab-elements.css">
+  <style>
+    .success {
+      color: #1e8e3e;
+    }
+    .error {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <google-codelab-analytics gaid="UA-49880327-14"></google-codelab-analytics>
+  <google-codelab codelab-gaid=""
+                  id="part1"
+                  title="IoT Data Pipelines in GCP - Part 1"
+                  environment="web"
+                  feedback-link="https://github.com/jerryjj/iot-pipeline-codelabs">
+    
+      <google-codelab-step label="Overview" duration="2">
+        <p>Welcome to an introductory series to IoT Data pipelines in Google Cloud Platform.</p>
+<p>In these Codelabs I assume that by now you already have a basic knowledge of Google Cloud Platform and its tooling.<br>You can read the <a href="..." target="_blank">presentation slides</a> which I use before starting these labs in workshop, to get better idea of the products we are going to utilise in these Codelabs.</p>
+<p>As an example we will be utilising a simplified version of an Electric Scooter with an IoT device in it.</p>
+<p>In this example series we will focus on a use case, where our IoT device is sending us few triggered signals and periodical position and battery data. The simplest things you need to have to be able to follow the devices journey.</p>
+<h2 is-upgraded>What You&#39;ll Learn in Part 1</h2>
+<ul>
+<li>Setup a new Cloud Project</li>
+<li>how to set up Cloud Pub/Sub and test subscriptions</li>
+<li>how to set up BigQuery and prepare schema</li>
+<li>how to run queries in BigQuery against dummy data</li>
+</ul>
+<aside class="special"><p>All the commands and the source code used for these labs, can be found in <a href="https://github.com/jerryjj/iot-pipelines-series" target="_blank">Github</a></p>
+</aside>
+<h2 is-upgraded>What kind of data are we handling</h2>
+<p>Before we continue, let&#39;s define some of our IoT devices data models.<br>In these Codelabs we assume our device talks to us in JSON format with following properties:</p>
+<ul>
+<li>&#34;<strong>d</strong>&#34;: Unique Device ID</li>
+<li>&#34;<strong>t</strong>&#34;: Epoch timestamp of when this event has occurred</li>
+<li>&#34;<strong>i</strong>&#34;: Unique Ride ID</li>
+<li>&#34;<strong>e</strong>&#34;: Name of the event/signal of particular payload</li>
+<li>&#34;<strong>b</strong>&#34;: Devices battery level in percentage</li>
+<li>&#34;<strong>l</strong>&#34;: Devices GPS coordinates</li>
+<li>&#34;<strong>p</strong>&#34;: Flag telling us if the device is powered on or not</li>
+</ul>
+<p>Here are the samples of the different signals we will receive:</p>
+<pre><code>{ &#34;d&#34;: &#34;0001&#34;, &#34;t&#34;: &#34;1566465608&#34;, &#34;i&#34;: &#34;abcd123&#34;, &#34;e&#34;: &#34;poweron&#34;, &#34;b&#34;: 100, &#34;l&#34;: &#34;61.123456,24.123456&#34;, &#34;p&#34;: 1 }
+{ &#34;d&#34;: &#34;0001&#34;, &#34;t&#34;: &#34;1566465638&#34;, &#34;i&#34;: &#34;abcd123&#34;, &#34;e&#34;: &#34;gps&#34;, &#34;b&#34;: 90, &#34;l&#34;: &#34;61.323456,24.323456&#34;, &#34;p&#34;: 1 }
+{ &#34;d&#34;: &#34;0001&#34;, &#34;t&#34;: &#34;1566465668&#34;, &#34;i&#34;: &#34;abcd123&#34;, &#34;e&#34;: &#34;poweroff&#34;, &#34;b&#34;: 80, &#34;l&#34;: &#34;61.423456,24.423456&#34;, &#34;p&#34;: 0 }
+{ &#34;d&#34;: &#34;0001&#34;, &#34;t&#34;: &#34;1566465698&#34;, &#34;i&#34;: null, &#34;e&#34;: &#34;gps&#34;, &#34;b&#34;: 79, &#34;l&#34;: &#34;61.423456,24.423456&#34;, &#34;p&#34;: 0 }
+{ &#34;d&#34;: &#34;0002&#34;, &#34;t&#34;: &#34;1566465728&#34;, &#34;i&#34;: null, &#34;e&#34;: &#34;alarm&#34;, &#34;b&#34;: 50, &#34;l&#34;: &#34;61.423456,24.423456&#34;, &#34;p&#34;: 0 }
+</code></pre>
+<p>What we can see from here is that we have 4 different signals we need to be able to handle,</p>
+<ul>
+<li><em>PowerOn signals will be triggered every time the scooters ride is started.</em></li>
+<li><em>PowerOff signals will be triggered every time the scooters ride is ended.</em></li>
+<li><em>GPS update signals are triggered frequently when the device is Powered ON and less frequently when it is Idle.</em></li>
+<li><em>Alarm event gets triggered when the device is Powered Off, but it&#39;s accelerometer is activated (device is moved or it fell down)</em></li>
+</ul>
+<p>Devices current battery level and latest location information is included in each of the message for simplicity in this case. There is also unique id generated for each PowerOn signal and it is sent with every signal until a PowerOff event occurs.</p>
+<h2 is-upgraded>Let&#39;s start</h2>
+<p>Without further ado, let&#39;s start by preparing our project and setting up some of the common services we will be using during these Codelabs.</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Setup" duration="2">
+        <p>If you don&#39;t already have a Google Account (Gmail or G-Suite), you must <a href="https://accounts.google.com/SignUp" target="_blank">create one</a>.<br>New GCP users are eligible for a <a href="https://cloud.google.com/free/" target="_blank">$300 free trial</a>.</p>
+<p>Next Sign-in to Google Cloud Platform console (<a href="https://console.cloud.google.com/projectcreate" target="_blank">console.cloud.google.com</a>) and create a new project.</p>
+<aside class="special"><p>You could create new cloud project using the command-line tools, but let&#39;s setup our project from the Google Cloud Console this time.</p>
+</aside>
+<p class="image-container"><img alt="Create Project" src="img/68d56a99fd3afbfc.png"></p>
+<p>Few things to note here:</p>
+<ul>
+<li>Make a note of the <strong>Project ID</strong>, you will need it later.</li>
+<li>Choose a billing account</li>
+<li>The location can be left as is, or you can select an Organization or folder where you want the project to be created.</li>
+</ul>
+<p>You may of course use your existing GCP Project if you want to, just use the <strong>Project ID</strong> of that one in the next step.</p>
+<h2 is-upgraded>Open Cloud Shell to your project</h2>
+<p>We will be utilising Cloud Shell during this codelab so you don&#39;t need to install any command-line tools to your working computer.</p>
+<p><a href="https://ssh.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/jerryjj/iot-pipelines-series" target="_blank">Open in Cloud Shell and clone lab repository</a></p>
+<h2 is-upgraded>Prepare common environment variables</h2>
+<p>Now before heading to the next part, set these environment variables to your terminal,<br>to choose a suitable region next to you, you can consult the <a href="https://cloud.google.com/compute/docs/regions-zones/#locations" target="_blank">Locations information</a><br>from Google Cloud documentation.</p>
+<pre><code>export GCP_PROJECT_ID=[use-your-project-id-here]
+export GCP_REGION=europe-west1 # Select a region suitable to you
+</code></pre>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Configuring Cloud Pub/Sub" duration="2">
+        <p>Now before we can start using Pub/Sub, we need to enable the API for it.<br>To do so, let&#39;s run the following command in our Cloud Shell:</p>
+<pre><code>gcloud services enable --project=$GCP_PROJECT_ID &#34;pubsub.googleapis.com&#34;
+</code></pre>
+<p>You should see a response similar to this:<br><code>Operation &#34;operations/acf.5862d95f-31fc-4d97-844c-6dd1fd855d27&#34; finished successfully.</code></p>
+<h2 is-upgraded>Create Pub/Sub topic</h2>
+<p>Now we can start utilising the product, so first thing we want to do is create a Topic.</p>
+<aside class="special"><p>Remember, everything we do from the command-line can also be achieved from the Google Cloud Console UI.</p>
+</aside>
+<p>To create a topic, let&#39;s store the name in our Environment so we can easily use it later, and use the gcloud utility to create the topic itself:</p>
+<pre><code>export PS_TOPIC_ID=device-signals
+
+gcloud pubsub topics create $PS_TOPIC_ID \
+--project $GCP_PROJECT_ID
+</code></pre>
+<p>You should see output similar to<br><code>Created topic [projects/your-project-id/topics/device-signals].</code></p>
+<h2 is-upgraded>Let&#39;s play with dummy data</h2>
+<p>Let&#39;s test our topic, by subscribing to it and sending test data to the topic.</p>
+<p>First thing we need to do, is create a subscription to our topic:</p>
+<pre><code>gcloud pubsub subscriptions create test_subscription \
+--topic $PS_TOPIC_ID \
+--project $GCP_PROJECT_ID
+</code></pre>
+<p>Then let&#39;s send some dummy data to our topic:</p>
+<pre><code>gcloud pubsub topics publish $PS_TOPIC_ID \
+--project $GCP_PROJECT_ID \
+--message &#39;hello, pub/sub&#39;
+</code></pre>
+<p>Then we can pull data out from our subscription:</p>
+<pre><code>gcloud pubsub subscriptions pull test_subscription \
+--project $GCP_PROJECT_ID \
+--auto-ack
+</code></pre>
+<p>Finally, we can delete our test subscription:</p>
+<pre><code>gcloud pubsub subscriptions delete test_subscription \
+--project $GCP_PROJECT_ID
+</code></pre>
+<p>Important to note here, that if you publish something to your topic without any subscription,<br>there is no way for you to retrieve that data.<br>Also if you create multiple subscriptions to topic, both of those subscriptions will receive that published message.</p>
+<p>You can try those combinations if you want to, using the same commands as before, but create two diffeewnt subscriptions to the same topic.<br>And if you want, create the test subscriptions from the <a href="https://console.cloud.google.com/cloudpubsub" target="_blank">Cloud Console UI</a></p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Setup BigQuery" duration="2">
+        <p>So now we have the ability to receive data to our Pub/Sub topic, next we need to figure out how we are going to process and store that data. Before heading to the processing parts, let&#39;s configure our storage.</p>
+<h2 is-upgraded>Lets enable the API</h2>
+<p>Again, before we can use this service, we need to enable the API for it:</p>
+<pre><code>gcloud services enable --project=$GCP_PROJECT_ID &#34;bigquery-json.googleapis.com&#34;
+</code></pre>
+<h2 is-upgraded>Define our Dataset, Table and Schema</h2>
+<p>Let&#39;s start by defining some environment variables again:</p>
+<pre><code>export BQ_DATASET_ID=devices
+export BQ_TABLE_ID=signals
+</code></pre>
+<p>Then let&#39;s define our table schema for by creating a following file <code>table-schema.json</code>:</p>
+<pre><code>[
+  {
+    &#34;name&#34;: &#34;timestamp&#34;,
+    &#34;type&#34;: &#34;TIMESTAMP&#34;
+  },
+  {
+    &#34;name&#34;: &#34;processing_timestamp&#34;,
+    &#34;type&#34;: &#34;TIMESTAMP&#34;
+  },
+  {
+    &#34;name&#34;: &#34;event_name&#34;,
+    &#34;type&#34;: &#34;STRING&#34;
+  },
+  {
+    &#34;name&#34;: &#34;device_id&#34;,
+    &#34;type&#34;: &#34;STRING&#34;
+  },
+  {
+    &#34;name&#34;: &#34;ride_id&#34;, 
+    &#34;type&#34;: &#34;STRING&#34;
+  },
+  {
+    &#34;name&#34;: &#34;battery_percentage&#34;,
+    &#34;type&#34;: &#34;INTEGER&#34;
+  },
+  {
+    &#34;name&#34;: &#34;latitude&#34;,
+    &#34;type&#34;: &#34;FLOAT&#34;
+  },
+  {
+    &#34;name&#34;: &#34;longitude&#34;,
+    &#34;type&#34;: &#34;FLOAT&#34;
+  },
+  {
+    &#34;name&#34;: &#34;power_on_status&#34;,
+    &#34;type&#34;: &#34;BOOL&#34;
+  }
+]
+</code></pre>
+<p>In the Cloud Shell, you have a decent code editor in your disposal, so let&#39;s use that.<br>Create the file in the active directory as such:</p>
+<p class="image-container"><img alt="New File" src="img/596d20f84d553be1.png"><img alt="Structure" src="img/6f05a07e188767ea.png"></p>
+<p>Now we can create the Dataset and the Table</p>
+<pre><code># Create Dataset in EU region
+bq --project_id=$GCP_PROJECT_ID mk --data_location EU $BQ_DATASET_ID
+</code></pre>
+<p>Should output<br><code>Dataset &#39;your-project-id:devices&#39; successfully created.</code></p>
+<pre><code># Create our table using the defined schema
+bq --project=$GCP_PROJECT_ID mk \
+--display_name=&#34;devices signal data&#34; \
+--time_partitioning_type=DAY \
+--time_partitioning_field=timestamp \
+--table $BQ_DATASET_ID.$BQ_TABLE_ID table-schema.json
+</code></pre>
+<p>Should output<br><code>Table &#39;your-project-id:devices.signals&#39; successfully created.</code></p>
+<aside class="special"><p>Few things to note here, we defined the table schema in JSON format and named our fields a bit more descriptive. And as you can see we also included some fields that are not in our incoming data <code>latitude</code> and <code>longitude</code>. We will get to them on the next part of our series. We also defined the table to be partitioned by Day, this will give us benefits in the long run.</p>
+</aside>
+<aside class="warning"><p>NOTE: In this codelab we predefine our table schema as we know our input.<br>There is a way to achieve these same things without having any control about the incoming data structure, but that is outside the scope for now.</p>
+</aside>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Querying data" duration="5">
+        <p>Now before we move on to processing our data and storing it to our BigQuery, let&#39;s test that we can answer some of the questions we want to ask from our data later on.</p>
+<p>To do that we initialise some dummy data that fits our tables schema and run some test queries towards it.</p>
+<p>Open new browser tab to <a href="https://console.cloud.google.com/bigquery" target="_blank">BigQuery Dashboard</a>.<br>Make sure your project is selected from the top menu:</p>
+<p class="image-container"><img alt="top-menu" src="img/3ca2cfcafc8ab45c.png"></p>
+<p>Now let&#39;s past in a first part of our BigQuery query to the <code>Query Editor</code>:</p>
+<pre><code>WITH dummy_data AS (
+  SELECT * FROM unnest(
+    array&lt;struct&lt;device_id string, ride_id string, timestamp TIMESTAMP, event_name string, latitude float64, longitude float64, battery_percentage int64, power_on_status bool&gt;&gt;[
+      (&#34;0001&#34;, &#34;123456&#34;, TIMESTAMP(&#34;2019-10-07 13:28:30.000 UTC&#34;), &#34;poweron&#34;, 60.1696993, 24.9294322, 88, true),
+      (&#34;0001&#34;, &#34;123456&#34;, TIMESTAMP(&#34;2019-10-07 13:29:00.000 UTC&#34;), &#34;gps&#34;, 60.16962, 24.9288, 86, true),
+      (&#34;0001&#34;, &#34;123456&#34;, TIMESTAMP(&#34;2019-10-07 13:29:30.000 UTC&#34;), &#34;gps&#34;, 60.16958, 24.92813, 84, true),
+      (&#34;0001&#34;, &#34;123456&#34;, TIMESTAMP(&#34;2019-10-07 13:30:00.000 UTC&#34;), &#34;gps&#34;, 60.16969, 24.92074, 82, true),
+      (&#34;0001&#34;, &#34;123456&#34;, TIMESTAMP(&#34;2019-10-07 13:30:30.000 UTC&#34;), &#34;poweroff&#34;, 60.1680235, 24.9222142, 81, false),
+      (&#34;0002&#34;, &#34;123457&#34;, TIMESTAMP(&#34;2019-10-07 13:29:00.000 UTC&#34;), &#34;poweron&#34;, 60.1696993, 24.9294322, 20, true),
+      (&#34;0002&#34;, &#34;123457&#34;, TIMESTAMP(&#34;2019-10-07 13:29:30.000 UTC&#34;), &#34;gps&#34;, 60.16962, 24.9288, 18, true),
+      (&#34;0002&#34;, &#34;123457&#34;, TIMESTAMP(&#34;2019-10-07 13:30:00.000 UTC&#34;), &#34;gps&#34;, 60.16958, 24.92813, 14, true),
+      (&#34;0002&#34;, &#34;123457&#34;, TIMESTAMP(&#34;2019-10-07 13:30:30.000 UTC&#34;), &#34;gps&#34;, 60.16969, 24.92074, 10, true),
+      (&#34;0002&#34;, &#34;123457&#34;, TIMESTAMP(&#34;2019-10-07 13:32:00.000 UTC&#34;), &#34;poweroff&#34;, 60.1680235, 24.9222142, 4, false)
+    ]
+  )
+),
+
+-- Defines collection of ride start events from our data
+starts AS (SELECT
+  timestamp, device_id, ride_id rid, latitude lat, longitude lng, battery_percentage bttr
+FROM dummy_data
+WHERE
+  event_name = &#34;poweron&#34;),
+
+-- Defines collection of ride end events from our data
+ends AS (SELECT
+  timestamp, device_id, ride_id rid, latitude lat, longitude lng, battery_percentage bttr
+FROM dummy_data
+WHERE
+  event_name = &#34;poweroff&#34;),
+
+-- Defines collection of location update events from our data
+location_updates AS (SELECT
+  timestamp, device_id, ride_id rid, latitude lat, longitude lng, battery_percentage bttr
+FROM dummy_data
+WHERE
+  event_name = &#34;gps&#34;)
+
+-- QUERY comes after this:
+</code></pre>
+<p>Here we initialise some dummy data that fits our tables schema and next we will run some test queries towards it.</p>
+<p>So we want to get answers to at least the following questions at any point in time:</p>
+<ul>
+<li><em>How many completed rides our devices have been on</em></li>
+<li><em>What kind of journey has the devices been on (with location trace)</em></li>
+<li><em>How many devices have low battery</em></li>
+<li><em>How many unique devices are there</em></li>
+<li><em>etc.</em></li>
+</ul>
+<p>Next we will do some queries to be able to answer these questions, I will not go too deep in explaining <a href="https://cloud.google.com/bigquery/docs/reference/standard-sql/query-syntax" target="_blank">BigQuery Query language</a> at this point, but as you will see, it is just Standard SQL.</p>
+<p>To be able to run these queries yourself, you need to attach the following query after the comment <code>-- QUERY comes after this:</code> and then run it.</p>
+<h2 is-upgraded>Test Queries</h2>
+<p><strong>Question 1</strong>: <em>How many completes rides we have</em></p>
+<pre><code>SELECT
+  ANY_VALUE(starts.device_id) AS device,
+  starts.rid, MIN(starts.timestamp) AS start_time, ANY_VALUE(starts.lat) AS start_lat, ANY_VALUE(starts.lng) AS start_lng,
+  MAX(ends.timestamp) AS end_time, ANY_VALUE(ends.lat) AS end_lat, ANY_VALUE(ends.lng) AS end_lng,
+  TIMESTAMP_DIFF(MAX(ends.timestamp), MIN(starts.timestamp), SECOND) AS duration_secs,
+  (MAX(starts.bttr) - MIN(ends.bttr)) AS battery_usage_percent
+FROM starts, ends
+LEFT JOIN location_updates ON location_updates.rid = starts.rid
+WHERE
+  ends.rid = starts.rid
+  AND location_updates.rid = starts.rid
+GROUP BY rid
+</code></pre>
+<p>Once you paste that query after the initial one, you will get something like this:</p>
+<p class="image-container"><img alt="query1" src="img/3bcc7bb422b28d06.png"></p>
+<p>And when you click the <code>Run</code>-button you should see results like these:</p>
+<p class="image-container"><img alt="q1results" src="img/f323bdf63e7bd2b9.png"></p>
+<p>Great, so now we have a query which can answer us how many completed rides there has been with out devices.<br>To run the next queries, remember to delete the previous one until <code>-- QUERY comes after this:</code>-comment.</p>
+<p><strong>Question 2</strong>: <em>What is the battery level of certain device and when was it last seen</em></p>
+<pre><code>SELECT
+  device_id, timestamp AS last_seen, battery_percentage
+FROM dummy_data
+WHERE
+  device_id = &#39;0001&#39;
+ORDER BY timestamp DESC
+LIMIT 1
+</code></pre>
+<p><strong>Question 3</strong>: <em>From how many unique devices we have received a signal certain month (October)</em></p>
+<pre><code>,params AS (
+  SELECT
+    &#39;2019-10&#39; AS search_month
+)
+SELECT
+  COUNT(DISTINCT(device_id)) AS devices
+FROM params, dummy_data
+WHERE
+  FORMAT_TIMESTAMP(&#39;%Y-%m&#39;, timestamp) = params.search_month
+</code></pre>
+<h2 is-upgraded>Visualize data</h2>
+<p>To test a simple visualisation, let&#39;s use a tool called BigQuery Geo Viz. Open new browser tab to <a href="https://bigquerygeoviz.appspot.com/" target="_blank">https://bigquerygeoviz.appspot.com/</a>, select your <strong>Project ID</strong> from the dropdown and paste in the following query:</p>
+<pre><code>WITH dummy_data AS (
+  SELECT * FROM unnest(
+    array&lt;struct&lt;device_id string, ride_id string, timestamp TIMESTAMP, event_name string, latitude float64, longitude float64, battery_percentage int64, power_on_status bool&gt;&gt;[
+      (&#34;0001&#34;, &#34;123456&#34;, TIMESTAMP(&#34;2019-10-07 13:28:30.000 UTC&#34;), &#34;poweron&#34;, 60.1696993, 24.9294322, 88, true),
+      (&#34;0001&#34;, &#34;123456&#34;, TIMESTAMP(&#34;2019-10-07 13:29:00.000 UTC&#34;), &#34;gps&#34;, 60.16962, 24.9288, 86, true),
+      (&#34;0001&#34;, &#34;123456&#34;, TIMESTAMP(&#34;2019-10-07 13:29:30.000 UTC&#34;), &#34;gps&#34;, 60.16958, 24.92813, 84, true),
+      (&#34;0001&#34;, &#34;123456&#34;, TIMESTAMP(&#34;2019-10-07 13:30:00.000 UTC&#34;), &#34;gps&#34;, 60.16969, 24.92074, 82, true),
+      (&#34;0001&#34;, &#34;123456&#34;, TIMESTAMP(&#34;2019-10-07 13:30:30.000 UTC&#34;), &#34;poweroff&#34;, 60.1680235, 24.9222142, 81, false),
+      (&#34;0002&#34;, &#34;123457&#34;, TIMESTAMP(&#34;2019-10-07 13:29:00.000 UTC&#34;), &#34;poweron&#34;, 60.1796993, 24.9394322, 20, true),
+      (&#34;0002&#34;, &#34;123457&#34;, TIMESTAMP(&#34;2019-10-07 13:29:30.000 UTC&#34;), &#34;gps&#34;, 60.17962, 24.9388, 18, true),
+      (&#34;0002&#34;, &#34;123457&#34;, TIMESTAMP(&#34;2019-10-07 13:30:00.000 UTC&#34;), &#34;gps&#34;, 60.17958, 24.93813, 14, true),
+      (&#34;0002&#34;, &#34;123457&#34;, TIMESTAMP(&#34;2019-10-07 13:30:30.000 UTC&#34;), &#34;gps&#34;, 60.17969, 24.93074, 10, true),
+      (&#34;0002&#34;, &#34;123457&#34;, TIMESTAMP(&#34;2019-10-07 13:32:00.000 UTC&#34;), &#34;poweroff&#34;, 60.1780235, 24.9322142, 4, false)
+    ]
+  )
+)
+SELECT
+  FORMAT_TIMESTAMP(&#34;%Y-%m-%dT%X%Ez&#34;, timestamp) as ts, event_name, device_id, ST_GeogPoint(longitude, latitude) AS wkt
+FROM dummy_data
+WHERE
+  ride_id = &#34;123456&#34;
+ORDER BY timestamp DESC
+</code></pre>
+<p>Then click, <code>Run</code> and <code>See Results</code> buttons, you will be redirected to review the results, the defaults should be fine (<code>Geometry column</code> should have <code>wkt</code> as value), go ahead and click <code>Add styles</code>.<br>Here we want to distinguish our waypoints with different colors so we now what the points on the map mean. To do this change the <strong>fillColor</strong> settings to match something like this:</p>
+<p class="image-container"><img alt="bqviz-styles" src="img/73c4253a464ec2af.png"></p>
+<p>After that we can see our GPS points on the map and colored based on their event, how nice is that!</p>
+<p class="image-container"><img alt="bqviz-results" src="img/afae80281e20fdad.png"></p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="End of Part 1" duration="0">
+        <p>Now we have setup our Pub/Sub topic and BigQuery as our Data Warehouse.<br>In the next Codelab we start to ingest some data from our devices.</p>
+<p>You are now ready to head over to <a href="/part2" target="_blank">Part 2</a></p>
+<p>Negative<br>:You don&#39;t need to do any project cleanup at this point if you are continuing to the next lab.<br>Otherwise you may just delete the project from the Cloud Console and it will delete all the resources we have do so far.</p>
+
+
+      </google-codelab-step>
+    
+  </google-codelab>
+
+  <script src="https://storage.googleapis.com/codelab-elements/native-shim.js"></script>
+  <script src="https://storage.googleapis.com/codelab-elements/custom-elements.min.js"></script>
+  <script src="https://storage.googleapis.com/codelab-elements/prettify.js"></script>
+  <script src="https://storage.googleapis.com/codelab-elements/codelab-elements.js"></script>
+
+</body>
+</html>
