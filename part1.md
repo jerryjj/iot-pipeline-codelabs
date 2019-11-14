@@ -355,7 +355,7 @@ To be able to run these queries yourself, you need to attach the following query
 
 ### Test Queries
 
-**Question 1**: *How many completes rides we have*
+**Question 1**: *How many completed rides we have*
 
 ```sql
 SELECT

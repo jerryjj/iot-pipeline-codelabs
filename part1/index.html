@@ -276,7 +276,7 @@ WHERE
 <p>Next we will do some queries to be able to answer these questions, I will not go too deep in explaining <a href="https://cloud.google.com/bigquery/docs/reference/standard-sql/query-syntax" target="_blank">BigQuery Query language</a> at this point, but as you will see, it is just Standard SQL.</p>
 <p>To be able to run these queries yourself, you need to attach the following query after the comment <code>-- QUERY comes after this:</code> and then run it.</p>
 <h2 is-upgraded>Test Queries</h2>
-<p><strong>Question 1</strong>: <em>How many completes rides we have</em></p>
+<p><strong>Question 1</strong>: <em>How many completed rides we have</em></p>
 <pre><code>SELECT
   ANY_VALUE(starts.device_id) AS device,
   starts.rid, MIN(starts.timestamp) AS start_time, ANY_VALUE(starts.lat) AS start_lat, ANY_VALUE(starts.lng) AS start_lng,
