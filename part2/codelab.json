@@ -1,0 +1,24 @@
+{
+  "environment": "web",
+  "format": "html",
+  "prefix": "https://storage.googleapis.com",
+  "mainga": "UA-49880327-14",
+  "updated": "2019-11-14T11:03:53+02:00",
+  "id": "part2",
+  "duration": 1,
+  "title": "IoT Data Pipelines in GCP - Part 2",
+  "summary": "IoT Data Pipelines in GCP - Part 2",
+  "source": "part2.md",
+  "theme": "",
+  "status": [
+    "draft"
+  ],
+  "category": [
+    "sdk"
+  ],
+  "tags": [
+    "js"
+  ],
+  "feedback": "https://github.com/jerryjj/iot-pipeline-codelabs/issues",
+  "url": "part2"
+}

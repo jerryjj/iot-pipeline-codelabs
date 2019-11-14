@@ -1,0 +1,214 @@
+
+<!doctype html>
+
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1.0, user-scalable=yes">
+  <meta name="theme-color" content="#4F7DC9">
+  <meta charset="UTF-8">
+  <title>IoT Data Pipelines in GCP - Part 2</title>
+  <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Source+Code+Pro:400|Roboto:400,300,400italic,500,700|Roboto+Mono">
+  <link rel="stylesheet" href="//fonts.googleapis.com/icon?family=Material+Icons">
+  <link rel="stylesheet" href="https://storage.googleapis.com/codelab-elements/codelab-elements.css">
+  <style>
+    .success {
+      color: #1e8e3e;
+    }
+    .error {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <google-codelab-analytics gaid="UA-49880327-14"></google-codelab-analytics>
+  <google-codelab codelab-gaid=""
+                  id="part2"
+                  title="IoT Data Pipelines in GCP - Part 2"
+                  environment="web"
+                  feedback-link="https://github.com/jerryjj/iot-pipeline-codelabs/issues">
+    
+      <google-codelab-step label="Overview" duration="1">
+        <p>Welcome to the part 2 of the Codelab series.<br>In the previous part we setup our Google Cloud Project with Cloud Pub/Sub and BigQuery.</p>
+<p>In this lab we start to actually ingest some real-time data to transform and store it into our BigQuery table.</p>
+<p>In this lab we will be using product called <a href="https://cloud.google.com/dataflow/" target="_blank">Cloud Dataflow</a> to accomplish this.</p>
+<aside class="special"><p>Cloud Dataflow is a fully-managed service for transforming and enriching data in stream (real time) and batch (historical) modes with equal reliability and expressiveness — no more complex workarounds or compromises needed. And with its serverless approach to resource provisioning and management, you have access to virtually limitless capacity to solve your biggest data processing challenges, while paying only for what you use.</p>
+</aside>
+<p>And to save us the hassle of actually writing our own Beam flow in Java or Python, we are going to utilize <a href="https://cloud.google.com/dataflow/docs/guides/templates/provided-templates" target="_blank">a premade template</a> from Google and use our custom DST transformer to handle the data transformation.</p>
+<aside class="special"><p>Cloud Dataflow templates allow you to stage your pipelines on Cloud Storage and <a href="https://cloud.google.com/dataflow/docs/templates/executing-templates" target="_blank">run them</a> from a variety of environments.<br>Google provides a set of <a href="https://github.com/GoogleCloudPlatform/DataflowTemplates" target="_blank">open-source Cloud Dataflow templates</a>.</p>
+</aside>
+<h2 is-upgraded>What You&#39;ll Learn in Part 2</h2>
+<ul>
+<li>Use Cloud Dataflow as data processor</li>
+<li>How to use custom UDF (User-Defined Function) in Dataflow template</li>
+</ul>
+<p>Without further ado, let&#39;s start!</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Setup" duration="0">
+        <p>Before we can continue, make sure you have the same Cloud Shell instance running as in the previous part,<br>with the environment variables still in place we defined earlier.</p>
+<p>Let&#39;s start by defining some new variable which we are going to need in this and next lab.</p>
+<pre><code>export GCP_ZONE=$GCP_REGION-b # choose a zone from selected region
+export BUCKET_NAME=$GCP_PROJECT_ID-dataflow
+export PIPELINE_FOLDER=gs://${BUCKET_NAME}/devices
+</code></pre>
+<p>In the previous lab we configured our GCP Region, now we also need to define a zone from that Region,<br>again you should to choose an available zone from your region, you can consult the <a href="https://cloud.google.com/compute/docs/regions-zones/#locations" target="_blank">Locations information</a> from Google Cloud documentation.</p>
+<p>And as we did previously, again we need to enable the proper services to be able to use Dataflow (this will take a while):</p>
+<pre><code>ENABLE_APIS=(
+&#34;storage-api.googleapis.com&#34; \
+&#34;dataflow.googleapis.com&#34;
+)
+
+gcloud services enable --project=$GCP_PROJECT_ID ${ENABLE_APIS[@]}
+</code></pre>
+<p>Now let&#39;s create a <a href="https://cloud.google.com/storage/" target="_blank">Cloud Storage</a> bucket, which will hold our Dataflow<br>related objects.</p>
+<pre><code># If your region is outside EU, change accordingly
+gsutil mb -p $GCP_PROJECT_ID -l eu gs://$BUCKET_NAME
+</code></pre>
+<p>As a Dataflow template, we will be utilising <a href="https://cloud.google.com/dataflow/docs/guides/templates/provided-streaming#cloud-pubsub-topic-to-bigquery" target="_blank">this one</a> which allows us to subscribe to existing Cloud Pub/Sub topic and<br>read incoming messages as a stream and then write them to BigQuery.</p>
+<p>First, let&#39;s define our UDF which will handle the transformation of incoming data to match our BigQuery table schema.</p>
+<p>Let&#39;s create a new file (using the Cloud Shell code editor) called <code>udf.js</code>:</p>
+<pre><code>/**
+ * A transforms incoming device signal event to BQ schema event
+ * @param {string} inJson
+ * @return {string} outJson
+ */
+function transformDeviceSignalEvent(inJson) {
+  var original = JSON.parse(inJson)
+
+  var now = new Date()
+
+  var locationParts = original.l.split(&#39;,&#39;)
+
+  var transformed = {
+    timestamp: new Date(original.t * 1000),
+    processing_timestamp: now,
+    event_name: original.e,
+    device_id: original.d,
+    ride_id: original.i,
+    battery_percentage: original.b,
+    latitude: parseFloat(locationParts[0]) || 0.0,
+    longitude: parseFloat(locationParts[1]) || 0.0,
+    power_on_status: Boolean(original.p)
+  }
+
+  return JSON.stringify(transformed)
+}
+</code></pre>
+<p>Then we will copy this file to our Cloud Storage bucket:</p>
+<pre><code>gsutil cp udf.js $PIPELINE_FOLDER/udf.js
+</code></pre>
+<p>That&#39;s it for the setup, next we will start the pipeline.</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Running the pipeline" duration="0">
+        <p>Now we are ready to launch our pipeline in Dataflow, once we execute the following command, the pipeline will create a Subscription to our Pub/Sub topic and start listening for incoming messages, parse them and store them to BigQuery.</p>
+<pre><code>JOB_NAME=device-signals-`date +&#34;%Y%m%d-%H%M%S&#34;`
+
+gcloud dataflow jobs run $JOB_NAME \
+--project=$GCP_PROJECT_ID \
+--region $GCP_REGION --zone $GCP_ZONE \
+--gcs-location gs://dataflow-templates/2019-07-10-00/PubSub_to_BigQuery \
+--parameters \
+&#34;inputTopic=projects/$GCP_PROJECT_ID/topics/$PS_TOPIC_ID,\
+outputTableSpec=$GCP_PROJECT_ID:$BQ_DATASET_ID.$BQ_TABLE_ID,\
+outputDeadletterTable=$GCP_PROJECT_ID:$BQ_DATASET_ID.${BQ_TABLE_ID}_deadletter,\
+javascriptTextTransformFunctionName=transformDeviceSignalEvent,\
+javascriptTextTransformGcsPath=$PIPELINE_FOLDER/udf.js&#34;
+</code></pre>
+<p>You should see similar output:</p>
+<pre><code>createTime: &#39;2019-11-14T08:28:52.175834Z&#39;
+currentStateTime: &#39;1970-01-01T00:00:00Z&#39;
+id: 2019-11-14_00_28_50-15285911863477203472
+location: europe-west1
+name: device-signals-20191114-102844
+projectId: data-pipelines-codelab
+startTime: &#39;2019-11-14T08:28:52.175834Z&#39;
+type: JOB_TYPE_STREAMING
+</code></pre>
+<p>Now we can go to the <a href="https://console.cloud.google.com/dataflow" target="_blank">Dataflow dashboard</a> in the GCP Console to monitor the pipeline setup.</p>
+<p>You should see your job in the listing:<br><img alt="df jobs" src="img/2fa5ad89a3a64702.png"></p>
+<p>And when you select your job, you should see the outline of the pipeline and statistics about it:<br><img alt="df job" src="img/e2087c543c0df59b.png"></p>
+<p>Now as you can see there are the minimum amount of Virtual Machines already running and waiting for data, even though there is no data available in the Pub/Sub topic.</p>
+<p>In the next step we will give the pipeline something to process.</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Simulate IoT data" duration="0">
+        <p>Let&#39;s give the pipeline something to do and launch our Device simulator to start sending some data to our Pub/Sub topic.<br>When we started Cloud Shell in the Part 1, we also cloned a repository to our Cloud Shell environment.<br>You should already be in the folder called <code>iot-pipelines-series</code>, if not navigate there.</p>
+<h2 is-upgraded>Setup credentials</h2>
+<p>Before we can run our simulator, we need to be able to send data to our Cloud Pub/Sub topic from the cloud shell.<br>For this we will need a Service Account that has the permissions to publish messages to topics.</p>
+<p>So let&#39;s create a service account with a private key, which have write access to our Pub/Sub topics.</p>
+<pre><code>KEY_NAME=&#34;ps-secret-key&#34;
+
+gcloud iam service-accounts create $KEY_NAME \
+--project=$GCP_PROJECT_ID \
+--display-name $KEY_NAME
+
+gcloud pubsub topics add-iam-policy-binding $PS_TOPIC_ID \
+--project=$GCP_PROJECT_ID \
+--member serviceAccount:$KEY_NAME@$GCP_PROJECT_ID.iam.gserviceaccount.com \
+--role roles/pubsub.publisher
+
+gcloud iam service-accounts keys create \
+--project=$GCP_PROJECT_ID \
+--key-file-type json \
+--iam-account $KEY_NAME@$GCP_PROJECT_ID.iam.gserviceaccount.com \
+./secrets/$KEY_NAME.json
+</code></pre>
+<p>It should end with similar output<br><code>created key [eff5b28edc19404ffa05aff887ec68ad88abf659] of type [json] as [./secrets/ps-secret-key.json] for [ps-secret-key@data-pipelines-codelab.iam.gserviceaccount.com]</code></p>
+<h2 is-upgraded>Prepare and run simulator</h2>
+<p>Inside that folder there is a folder called simulator, that is a Device simulator written in Node.js which we will be using through out these labs.</p>
+<p>First we need to prepare our simulator to be able to run it, to do so run the following commands:</p>
+<pre><code>cd simulator/
+npm install
+</code></pre>
+<p>Then we can launch our simulator with 10 Devices in Helsinki, Finland:</p>
+<pre><code>DEVICE_COUNT=10 node src/index.js
+</code></pre>
+<p>You should start seeing some debug output of the devices sending different signals towards our pipeline.<br>And if you go back to your GCP console&#39;s <a href="https://console.cloud.google.com/dataflow" target="_blank">Dataflow dashboard</a>, you should see your steps are now processing data.</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Query the data" duration="0">
+        <p>Now head over your <a href="https://console.cloud.google.com/bigquery" target="_blank">BigQuery dashboard</a> and execute the following query to see the latest 100 items in your database (replace your Project ID)</p>
+<pre><code>SELECT * FROM `YOUR_PROJECT_ID.devices.signals` ORDER BY timestamp DESC LIMIT 100
+</code></pre>
+<p>You should see similar results:<br><img alt="query results" src="img/415354bc6495cc85.png"></p>
+<p>Wonderful! You now have a streaming Dataflow pipeline to process data from your device all the way to your BigQuery table.</p>
+<p>Click around the Cloud Console UI and view the Dataflow logs and checkout the Pub/Sub topic and subscription views, to get familiar with other settings.</p>
+<p>When you check your Cloud Pub/Sub subscription Dashboard you might see a spike of unacknowledged messages. This happens because our simulator was sending events to the topic, but the Dataflow wasn&#39;t yet ready to start reading them from the subscription.<br><img alt="ack spike" src="img/566b9faa2f4c5ded.png"></p>
+<p>And as you can see, once the pipeline was ready, it pulled all the older messages and processed them.</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Cleanup" duration="0">
+        <p>Remember to stop your Dataflow pipeline so it won&#39;t continue to incur charges.<br>To do so, stop your simulator (CTRL-C) running in the Cloud Shell and then run the following commands:</p>
+<pre><code>JOB_ID=$(gcloud --project $GCP_PROJECT_ID dataflow jobs list --region $GCP_REGION --status active --filter=name:device --format=&#34;value(id)&#34;)
+
+gcloud --project $GCP_PROJECT_ID dataflow jobs drain --region $GCP_REGION $JOB_ID
+</code></pre>
+<p>You should see output similar to<br><code>Started draining job [2019-11-14_00_28_50-15285911863477203472]</code></p>
+<aside class="warning"><p>Pricing of Dataflow is based on the selected Machine Type, Maximum amount of Workers, Disk size, etc. and this pipeline (with defaults) would have incurred approximate cost of 256-768 USD/month depending on data volume.</p>
+</aside>
+<p>This concludes our Part 2 of the labs, in the next lab we will build the pipeline a bit differently using Cloud Functions.</p>
+<p>You are now ready to head over to Part 3.</p>
+
+
+      </google-codelab-step>
+    
+  </google-codelab>
+
+  <script src="https://storage.googleapis.com/codelab-elements/native-shim.js"></script>
+  <script src="https://storage.googleapis.com/codelab-elements/custom-elements.min.js"></script>
+  <script src="https://storage.googleapis.com/codelab-elements/prettify.js"></script>
+  <script src="https://storage.googleapis.com/codelab-elements/codelab-elements.js"></script>
+
+</body>
+</html>
