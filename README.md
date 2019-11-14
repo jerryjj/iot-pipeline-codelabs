@@ -4,6 +4,7 @@ These are the supporting Codelabs for workshop I run about data pipelines in GCP
 
 - [Codelab part 1](https://jerryjj.github.io/iot-pipeline-codelabs/part1/index.html)
 - [Codelab part 2](https://jerryjj.github.io/iot-pipeline-codelabs/part2/index.html)
+- [Codelab part 3](https://jerryjj.github.io/iot-pipeline-codelabs/part3/index.html)
 
 ## Development
 
@@ -12,6 +13,7 @@ These are the supporting Codelabs for workshop I run about data pipelines in GCP
 ```sh
 claat export part1.md
 claat export part2.md
+claat export part3.md
 ```
 
 ### Serving
